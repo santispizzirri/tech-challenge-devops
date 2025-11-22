@@ -1,0 +1,60 @@
+name: Manage Canary Deployment (Manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Canary deployment action'
+        required: true
+        default: 'status'
+        type: choice
+        options:
+          - status
+          - start-canary
+          - scale-canary
+          - promote-canary
+          - rollback-canary
+      replicas:
+        description: 'Number of canary replicas (for scale-canary action)'
+        required: false
+        default: '1'
+
+jobs:
+  manage-canary:
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'v1.27.0'
+
+      - name: Configure kubectl
+        run: |
+          echo "Setting up kubectl configuration..."
+          mkdir -p $HOME/.kube
+
+      - name: Run canary action
+        run: |
+          chmod +x .github/workflows/scripts/canary-manager.sh
+          if [ "${{ github.event.inputs.action }}" == "scale-canary" ]; then
+            ./.github/workflows/scripts/canary-manager.sh ${{ github.event.inputs.action }} ${{ github.event.inputs.replicas }}
+          else
+            ./.github/workflows/scripts/canary-manager.sh ${{ github.event.inputs.action }}
+          fi
+
+      - name: Create action summary
+        if: always()
+        run: |
+          echo "## Canary Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Action**: ${{ github.event.inputs.action }}" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ github.event.inputs.action }}" == "scale-canary" ]; then
+            echo "**Replicas**: ${{ github.event.inputs.replicas }}" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "**Timestamp**: $(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "**Actor**: ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY

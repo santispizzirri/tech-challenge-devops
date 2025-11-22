@@ -1,0 +1,148 @@
+# Canary Deployment Strategy Manifests
+
+---
+# Stable Deployment (v1.0) - receives 90% of traffic
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-service-stable
+  namespace: deployment-strategies
+  labels:
+    app: web-service-canary
+    version: stable
+    environment: production
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: web-service-canary
+      track: stable
+  template:
+    metadata:
+      labels:
+        app: web-service-canary
+        track: stable
+        version: "1.0"
+      annotations:
+        deployment-type: "canary"
+    spec:
+      containers:
+      - name: web-service
+        image: web-service:1.0
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: http
+          containerPort: 5000
+        env:
+        - name: SERVICE_VERSION
+          value: "1.0"
+        - name: SERVICE_NAME
+          value: "web-service-stable"
+        - name: PORT
+          value: "5000"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 3
+          periodSeconds: 5
+          timeoutSeconds: 2
+          failureThreshold: 2
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+
+---
+# Canary Deployment (v2.0) - receives 10% of traffic initially
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-service-canary
+  namespace: deployment-strategies
+  labels:
+    app: web-service-canary
+    version: canary
+    environment: production
+spec:
+  replicas: 1  # Small number for canary
+  selector:
+    matchLabels:
+      app: web-service-canary
+      track: canary
+  template:
+    metadata:
+      labels:
+        app: web-service-canary
+        track: canary
+        version: "2.0"
+      annotations:
+        deployment-type: "canary"
+    spec:
+      containers:
+      - name: web-service
+        image: web-service:2.0
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: http
+          containerPort: 5000
+        env:
+        - name: SERVICE_VERSION
+          value: "2.0"
+        - name: SERVICE_NAME
+          value: "web-service-canary"
+        - name: PORT
+          value: "5000"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 3
+          periodSeconds: 5
+          timeoutSeconds: 2
+          failureThreshold: 2
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+
+---
+# Service for Canary (routes to both stable and canary)
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-service-canary
+  namespace: deployment-strategies
+  labels:
+    app: web-service-canary
+spec:
+  type: LoadBalancer
+  selector:
+    app: web-service-canary  # Routes to both stable and canary
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+    protocol: TCP
