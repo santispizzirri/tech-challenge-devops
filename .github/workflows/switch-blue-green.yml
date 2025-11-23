@@ -1,0 +1,49 @@
+name: Switch Deployment (Blue/Green Manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Deployment action'
+        required: true
+        default: 'status'
+        type: choice
+        options:
+          - status
+          - switch-to-green
+          - switch-to-blue
+          - scale-green
+          - scale-blue
+
+jobs:
+  switch-deployment:
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'v1.27.0'
+
+      - name: Configure kubectl
+        run: |
+          echo "Setting up kubectl configuration..."
+          mkdir -p $HOME/.kube
+
+      - name: Run deployment action
+        run: |
+          chmod +x .github/workflows/scripts/blue-green-manager.sh
+          ./.github/workflows/scripts/blue-green-manager.sh ${{ github.event.inputs.action }}
+
+      - name: Create action summary
+        if: always()
+        run: |
+          echo "## Blue/Green Switch Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Action**: ${{ github.event.inputs.action }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Timestamp**: $(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "**Actor**: ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY

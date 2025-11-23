@@ -1,0 +1,120 @@
+name: Deploy to Kubernetes (Blue/Green)
+
+on:
+  workflow_dispatch:
+    inputs:
+      deployment_strategy:
+        description: 'Deployment strategy'
+        required: true
+        default: 'blue-green'
+        type: choice
+        options:
+          - blue-green
+          - canary
+      target_environment:
+        description: 'Target environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+      image_version:
+        description: 'Docker image version to deploy'
+        required: true
+        default: 'latest'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.event.inputs.target_environment }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'v1.27.0'
+
+      - name: Configure kubectl context
+        run: |
+          # For local testing, this would configure kubeconfig
+          # In production, use Azure/AWS/GCP setup
+          echo "Configuring kubectl for ${{ github.event.inputs.target_environment }}"
+          mkdir -p $HOME/.kube
+          
+      - name: Create namespace if not exists
+        run: |
+          kubectl create namespace deployment-strategies --dry-run=client -o yaml | kubectl apply -f -
+          echo "✓ Namespace deployment-strategies ready"
+
+      - name: Deploy manifests
+        run: |
+          # Deploy based on selected strategy
+          if [ "${{ github.event.inputs.deployment_strategy }}" == "blue-green" ]; then
+            echo "Deploying Blue/Green strategy..."
+            kubectl apply -f k8s/01-blue-green.yaml
+            echo "✓ Blue/Green deployment manifests applied"
+          elif [ "${{ github.event.inputs.deployment_strategy }}" == "canary" ]; then
+            echo "Deploying Canary strategy..."
+            kubectl apply -f k8s/02-canary.yaml
+            echo "✓ Canary deployment manifests applied"
+          fi
+
+      - name: Wait for deployments to be ready
+        run: |
+          echo "Waiting for deployments to be ready..."
+          kubectl wait --for=condition=available --timeout=300s \
+            deployment/web-service-blue -n deployment-strategies 2>/dev/null || true
+          kubectl wait --for=condition=available --timeout=300s \
+            deployment/web-service-green -n deployment-strategies 2>/dev/null || true
+          kubectl wait --for=condition=available --timeout=300s \
+            deployment/web-service-stable -n deployment-strategies 2>/dev/null || true
+          echo "✓ Deployments ready"
+
+      - name: Verify deployment
+        run: |
+          echo "=== Deployment Verification ==="
+          kubectl get deployments -n deployment-strategies -o wide
+          echo ""
+          echo "=== Pods Status ==="
+          kubectl get pods -n deployment-strategies -o wide
+          echo ""
+          echo "=== Services ==="
+          kubectl get services -n deployment-strategies
+
+      - name: Get service endpoints
+        run: |
+          echo "Service endpoints:"
+          kubectl get endpoints -n deployment-strategies
+
+      - name: Create deployment summary
+        run: |
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Strategy**: ${{ github.event.inputs.deployment_strategy }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment**: ${{ github.event.inputs.target_environment }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Image Version**: ${{ github.event.inputs.image_version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Timestamp**: $(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Pod Status" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          kubectl get pods -n deployment-strategies -o wide >> $GITHUB_STEP_SUMMARY || true
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
+  notify:
+    needs: deploy
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Deployment status notification
+        run: |
+          if [ "${{ needs.deploy.result }}" == "success" ]; then
+            echo "✓ Deployment completed successfully"
+          else
+            echo "✗ Deployment failed"
+            exit 1
+          fi

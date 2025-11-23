@@ -1,0 +1,149 @@
+# Blue/Green Deployment Strategy Manifests
+
+---
+# Blue Deployment (v1.0)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-service-blue
+  namespace: deployment-strategies
+  labels:
+    app: web-service
+    version: blue
+    environment: production
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: web-service
+      slot: blue
+  template:
+    metadata:
+      labels:
+        app: web-service
+        slot: blue
+        version: "1.0"
+      annotations:
+        deployment-type: "blue-green"
+    spec:
+      containers:
+      - name: web-service
+        image: web-service:1.0
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: http
+          containerPort: 5000
+        env:
+        - name: SERVICE_VERSION
+          value: "1.0"
+        - name: SERVICE_NAME
+          value: "web-service-blue"
+        - name: PORT
+          value: "5000"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 3
+          periodSeconds: 5
+          timeoutSeconds: 2
+          failureThreshold: 2
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+
+---
+# Green Deployment (v2.0)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-service-green
+  namespace: deployment-strategies
+  labels:
+    app: web-service
+    version: green
+    environment: production
+spec:
+  replicas: 0  # Initially scaled down
+  selector:
+    matchLabels:
+      app: web-service
+      slot: green
+  template:
+    metadata:
+      labels:
+        app: web-service
+        slot: green
+        version: "2.0"
+      annotations:
+        deployment-type: "blue-green"
+    spec:
+      containers:
+      - name: web-service
+        image: web-service:2.0
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: http
+          containerPort: 5000
+        env:
+        - name: SERVICE_VERSION
+          value: "2.0"
+        - name: SERVICE_NAME
+          value: "web-service-green"
+        - name: PORT
+          value: "5000"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 3
+          periodSeconds: 5
+          timeoutSeconds: 2
+          failureThreshold: 2
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+
+---
+# Service that routes to Blue by default
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-service
+  namespace: deployment-strategies
+  labels:
+    app: web-service
+spec:
+  type: LoadBalancer
+  selector:
+    app: web-service
+    slot: blue  # Initially pointing to blue
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+    protocol: TCP
