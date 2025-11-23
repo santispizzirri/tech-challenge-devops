@@ -56,12 +56,10 @@ jobs:
           # Deploy based on selected strategy
           if [ "${{ github.event.inputs.deployment_strategy }}" == "blue-green" ]; then
             echo "Deploying Blue/Green strategy..."
-            kubectl apply -f k8s/00-namespace.yaml
             kubectl apply -f k8s/01-blue-green.yaml
             echo "✓ Blue/Green deployment manifests applied"
           elif [ "${{ github.event.inputs.deployment_strategy }}" == "canary" ]; then
             echo "Deploying Canary strategy..."
-            kubectl apply -f k8s/00-namespace.yaml
             kubectl apply -f k8s/02-canary.yaml
             echo "✓ Canary deployment manifests applied"
           fi

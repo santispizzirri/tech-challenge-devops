@@ -23,25 +23,33 @@ This project demonstrates two common Kubernetes deployment strategies:
 
 ```mermaid
 graph LR
-    A["Deployment Strategies"]
+    A["GitHub Push"]
     
-    A -->|Zero Downtime| B["Blue/Green"]
-    A -->|Risk Mitigation| C["Canary"]
+    A -->|Trigger| B["Build Docker Image<br/>build-docker-image.yml"]
+    B -->|Create| C["Docker Image<br/>web-service:TAG"]
     
-    B -->|Instant Switch| D["100% → 0%"]
-    B -->|Pros| E["Fast rollback<br/>Simple logic<br/>Binary switch"]
-    B -->|Cons| F["Requires 2x resources<br/>No gradual testing"]
+    C -->|Deploy Strategy| D{Choose Strategy}
     
-    C -->|Gradual Shift| G["0% → 100%"]
-    C -->|Pros| H["Lower risk<br/>Real monitoring<br/>Quick rollback"]
-    C -->|Cons| I["Longer deployment<br/>Complex setup<br/>Needs monitoring"]
+    D -->|Blue/Green| E["Deploy via GitHub Actions<br/>deploy-kubernetes.yml"]
+    D -->|Canary| F["Deploy via GitHub Actions<br/>deploy-kubernetes.yml"]
+    
+    E -->|Apply| G["k8s/01-blue-green.yaml<br/>Blue v1.0 + Green v2.0"]
+    F -->|Apply| H["k8s/02-canary.yaml<br/>Stable v1.0 + Canary v2.0"]
+    
+    G -->|Manage| I["switch-blue-green.yml<br/>Instant traffic switch"]
+    H -->|Manage| J["manage-canary.yml<br/>Gradual traffic shift"]
+    
+    I -->|Validate| K["run-load-tests.yml<br/>k6 load tests"]
+    J -->|Validate| K
+    
+    K -->|CI/CD| L["run-unit-tests.yml<br/>pytest validation"]
     
     style B fill:#4CAF50,stroke:#2E7D32,color:#fff
-    style C fill:#FF9800,stroke:#E65100,color:#fff
-    style E fill:#81C784
-    style F fill:#EF9A9A
-    style H fill:#81C784
-    style I fill:#EF9A9A
+    style E fill:#2196F3,stroke:#1565C0,color:#fff
+    style F fill:#FF9800,stroke:#E65100,color:#fff
+    style G fill:#1976D2,color:#fff
+    style H fill:#F57C00,color:#fff
+    style K fill:#388E3C,color:#fff
 ```
 
 ### Blue/Green Deployment
@@ -103,34 +111,30 @@ tech-challenge-devops/
 │   ├── app.py                   # Flask application
 │   └── requirements.txt          # Python dependencies
 ├── k8s/                         # Kubernetes manifests
-│   ├── 00-namespace.yaml        # Deployment namespace
 │   ├── 01-blue-green.yaml       # Blue/Green deployment setup
 │   └── 02-canary.yaml           # Canary deployment setup
-├── scripts/                     # Management scripts (deprecated - see .github/workflows/scripts/)
-│   ├── blue-green-manager.sh    # Moved to .github/workflows/scripts/
-│   └── canary-manager.sh        # Moved to .github/workflows/scripts/
-├── load-tests/                  # Load testing scripts (deprecated - see test/load/)
-│   ├── blue-green-test.js       # Moved to test/load/
-│   ├── canary-test.js           # Moved to test/load/
-│   └── smoke-test.js            # Moved to test/load/
-├── test/                       # Test suite
+├── test/                        # Test suite
+│   ├── conftest.py              # Pytest configuration and fixtures
 │   ├── unit/                    # Unit tests
-│   │   └── test_app.py          # Flask app unit tests
+│   │   └── test_app.py          # Flask app unit tests (26 tests)
 │   └── load/                    # k6 load testing scripts
 │       ├── smoke-test.js        # Quick smoke test
 │       ├── blue-green-test.js   # Blue/Green deployment load test
 │       └── canary-test.js       # Canary deployment load test
+├── .github/
+│   └── workflows/               # GitHub Actions CI/CD
+│       ├── build-docker-image.yml       # Build and push Docker images
+│       ├── deploy-kubernetes.yml        # Deploy to Kubernetes cluster
+│       ├── run-unit-tests.yml           # Run pytest on Python 3.9/3.10/3.11
+│       ├── run-load-tests.yml           # Execute k6 load tests (manual)
+│       ├── switch-blue-green.yml        # Switch Blue/Green deployments (manual)
+│       ├── manage-canary.yml            # Manage Canary deployment (manual)
+│       └── scripts/                     # Deployment management scripts
+│           ├── blue-green-manager.sh    # Blue/Green management script
+│           └── canary-manager.sh        # Canary management script
 ├── pytest.ini                   # Pytest configuration
-│   ├── build-docker-image.yml   # Build and push Docker images
-│   ├── deploy-kubernetes.yml    # Deploy to Kubernetes cluster
-│   ├── run-load-tests.yml       # Execute k6 load tests (manual)
-│   ├── switch-blue-green.yml    # Switch Blue/Green deployments (manual)
-│   ├── manage-canary.yml        # Manage Canary deployment (manual)
-│   └── scripts/                 # Deployment management scripts
-│       ├── blue-green-manager.sh   # Blue/Green management script
-│       └── canary-manager.sh       # Canary management script
-├── README.md                    # This file
-└── devops-challenge.pdf         # Challenge requirements
+├── .gitignore                   # Git ignore patterns (Python, virtualenv, .vscode)
+└── README.md                    # This file
 ```
 
 ## GitHub Actions
@@ -299,7 +303,6 @@ minikube image load web-service:2.0
 
 ```bash
 # Create namespace and deploy Blue/Green
-kubectl apply -f k8s/00-namespace.yaml
 kubectl apply -f k8s/01-blue-green.yaml
 
 # Verify deployment
@@ -396,26 +399,61 @@ Blue/Green is ideal for:
 
 ```mermaid
 graph TD
-    A["Phase 1: Initial State"] -->|Blue Active| B["100% Traffic → Blue v1.0"]
-    B -->|Green Scaled Down| C["Green v2.0 (0 replicas)"]
+    A["1. Developer Push<br/>to feature branch"]
     
-    D["Phase 2: Deploy New Version"] -->|Scale Up Green| E["Green v2.0 (2 replicas)"]
-    E -->|Verify & Test| F["Run smoke tests on Green"]
+    A -->|Trigger| B["run-unit-tests.yml<br/>pytest test_app.py"]
+    B -->|All 26 tests pass?| C{Tests Pass?}
     
-    G["Phase 3: Switch Traffic"] -->|Update Service Selector| H["100% Traffic → Green v2.0"]
-    H -->|Monitor for Errors| I{Errors Detected?}
+    C -->|No| D["⛔ Build Failed<br/>Notify developer"]
+    C -->|Yes| E["build-docker-image.yml<br/>Build & tag image"]
     
-    I -->|Yes - Rollback| J["100% Traffic → Blue v1.0"]
-    I -->|No - Success| K["Green is now Production"]
+    E -->|Create| F["Docker Image<br/>web-service:VERSION"]
     
-    K -->|Cleanup| L["Scale Down Blue v1.0"]
+    F -->|2. Manual Deploy| G["deploy-kubernetes.yml<br/>Create namespace"]
+    G -->|Apply Manifests| H{Strategy?}
     
-    style B fill:#4CAF50
-    style C fill:#FFC107
-    style E fill:#FFC107
-    style H fill:#2196F3
-    style J fill:#F44336
-    style K fill:#4CAF50
+    H -->|Blue/Green| I["kubectl apply<br/>k8s/01-blue-green.yaml"]
+    H -->|Canary| J["kubectl apply<br/>k8s/02-canary.yaml"]
+    
+    I -->|Deploy Status| K["Blue: v1.0<br/>Green: v2.0 0/2"]
+    J -->|Deploy Status| L["Stable: 3/3 v1.0<br/>Canary: 0/1 v2.0"]
+    
+    K -->|3. Manage Traffic| M["switch-blue-green.yml<br/>Status/Switch/Scale"]
+    L -->|3. Manage Traffic| N["manage-canary.yml<br/>Status/Scale/Promote"]
+    
+    M -->|Service Selector| O["Update to Green<br/>100% Traffic → v2.0"]
+    N -->|Pod Replicas| P["Scale Canary 1→2→3<br/>25% → 50% → 100%"]
+    
+    O -->|4. Validate| Q["run-load-tests.yml<br/>k6 smoke/blue-green-test"]
+    P -->|4. Validate| R["run-load-tests.yml<br/>k6 canary-test"]
+    
+    Q -->|Check metrics| S{Error Rate OK?}
+    R -->|Check metrics| T{Error Rate OK?}
+    
+    S -->|No| U["⛔ Rollback<br/>switch-blue-green.yml"]
+    S -->|Yes| V["✅ Deployment Success<br/>v2.0 is production"]
+    
+    T -->|No| W["⛔ Rollback<br/>manage-canary.yml"]
+    T -->|Yes| X["✅ Promotion Success<br/>v2.0 is stable"]
+    
+    U -->|Revert| K
+    W -->|Revert| L
+    
+    style A fill:#1976D2,color:#fff
+    style B fill:#4CAF50,color:#fff
+    style E fill:#4CAF50,color:#fff
+    style F fill:#2196F3,color:#fff
+    style I fill:#1976D2,color:#fff
+    style J fill:#F57C00,color:#fff
+    style M fill:#2196F3,color:#fff
+    style N fill:#F57C00,color:#fff
+    style Q fill:#388E3C,color:#fff
+    style R fill:#388E3C,color:#fff
+    style V fill:#1B5E20,color:#fff
+    style X fill:#1B5E20,color:#fff
+    style D fill:#C62828,color:#fff
+    style U fill:#C62828,color:#fff
+    style W fill:#C62828,color:#fff
 ```
 
 ### Key Characteristics
@@ -481,37 +519,40 @@ Canary is ideal for:
 - Gradual traffic shifting
 - Easy rollback
 
-### Workflow Diagram
+### Canary Execution Flow
 
 ```mermaid
 graph TD
-    A["Phase 1: Initial State"] -->|Stable Active| B["75% Traffic → Stable v1.0"]
-    B -->|Canary Ready| C["25% Traffic → Canary v2.0"]
+    subgraph Canary["Canary Deployment Flow"]
+        C1["1. Deploy with manage-canary.yml<br/>Stable: 3/3 v1.0<br/>Canary: 0/1 scaled down"]
+        C2["2. Start Canary<br/>manage-canary.yml: start-canary<br/>Canary pods: 0→1<br/>Traffic: ~25% to v2.0"]
+        C3["3. Monitor with k6<br/>run-load-tests.yml: canary-test.js<br/>Track error rate & latency"]
+        C4{Error Rate<br/>Acceptable?}
+        C5["4. Scale Gradually<br/>manage-canary.yml: scale-canary 2<br/>Traffic split: 50%/50%"]
+        C6["5. Continue Testing<br/>run-load-tests.yml: canary-test.js<br/>Monitor v1.0 vs v2.0 metrics"]
+        C7["6. Promote or Rollback<br/>manage-canary.yml: promote-canary<br/>or rollback-canary"]
+        C8["✅ Stable: 3/3 v2.0<br/>Canary: 0/1 scaled down<br/>100% traffic → v2.0"]
+        C9["⛔ Stable: 3/3 v1.0<br/>Canary: 0/1 scaled down<br/>100% traffic → v1.0"]
+        
+        C1 -->|GitOps| C2
+        C2 -->|Observe| C3
+        C3 -->|Analyze| C4
+        C4 -->|Yes| C5
+        C4 -->|No| C9
+        C5 -->|Monitor| C6
+        C6 -->|Ready?| C7
+        C7 -->|Success| C8
+        C7 -->|Issues| C9
+    end
     
-    D["Phase 2: Monitor Canary"] -->|Watch Metrics| E["Error Rate < 1%?"]
-    E -->|Yes - Continue| F["Increase Canary Traffic"]
-    E -->|No - Rollback| G["Scale Down Canary"]
-    
-    F -->|Scale to 2 replicas| H["50% Traffic Split"]
-    H -->|Monitor| I{"More Issues?"}
-    
-    I -->|Yes| G
-    I -->|No| J["Scale to 3 replicas"]
-    J -->|Final Check| K{"Ready to Promote?"}
-    
-    K -->|Yes| L["Update Stable to v2.0"]
-    K -->|No| G
-    
-    L -->|Cleanup| M["Scale Down Canary v2.0"]
-    M -->|Complete| N["100% Traffic → New Stable v2.0"]
-    
-    style B fill:#4CAF50
-    style C fill:#FF9800
-    style E fill:#2196F3
-    style F fill:#2196F3
-    style L fill:#4CAF50
-    style N fill:#4CAF50
-    style G fill:#F44336
+    style Canary fill:#FFF3E0
+    style C1 fill:#F57C00,color:#fff
+    style C2 fill:#FB8C00,color:#fff
+    style C3 fill:#FFA726,color:#fff
+    style C5 fill:#FFB74D,color:#fff
+    style C6 fill:#FFCC80
+    style C8 fill:#C8E6C9
+    style C9 fill:#FFCDD2
 ```
 
 ### Key Characteristics

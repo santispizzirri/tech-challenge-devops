@@ -1,7 +1,0 @@
-# Namespace for the deployment strategies demonstrations
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: deployment-strategies
-  labels:
-    name: deployment-strategies

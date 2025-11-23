@@ -5,5 +5,6 @@ Pytest configuration and shared fixtures.
 import sys
 import os
 
-# Add the app directory to Python path so imports work correctly
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../app'))
+# Add the project root to Python path so imports work correctly
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, project_root)

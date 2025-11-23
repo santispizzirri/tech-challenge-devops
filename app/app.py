@@ -6,7 +6,7 @@ Provides version-specific responses and logs all requests to stdout.
 
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
@@ -19,7 +19,7 @@ PORT = int(os.getenv('PORT', 5000))
 
 def log_request(message):
     """Log request to stdout with timestamp."""
-    timestamp = datetime.utcnow().isoformat()
+    timestamp = datetime.now(timezone.utc).isoformat()
     print(f"[{timestamp}] {message}", file=sys.stdout, flush=True)
 
 
@@ -39,7 +39,7 @@ def index():
     response = {
         'service': SERVICE_NAME,
         'version': SERVICE_VERSION,
-        'timestamp': datetime.utcnow().isoformat(),
+        'timestamp': datetime.now(timezone.utc).isoformat(),
         'message': f'{SERVICE_NAME} v{SERVICE_VERSION} is running'
     }
     log_request(f"Responded to GET / with version {SERVICE_VERSION}")
@@ -75,7 +75,7 @@ def info():
         'service': SERVICE_NAME,
         'version': SERVICE_VERSION,
         'uptime_info': 'Container started',
-        'timestamp': datetime.utcnow().isoformat()
+        'timestamp': datetime.now(timezone.utc).isoformat()
     }
     return jsonify(response), 200
 
