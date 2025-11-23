@@ -383,7 +383,7 @@ Unit tests run automatically on:
 - Pull requests to `main` branch
 - Changes to `app/` or `test/unit/` folders
 
-Tests run on Python 3.9, 3.10, and 3.11 simultaneously to ensure compatibility.
+Tests run on Python 3.14 to match local development environment.
 
 ## Blue/Green Deployment
 
@@ -474,19 +474,19 @@ graph TD
 
 ```bash
 # Check current status
-./scripts/blue-green-manager.sh status
+./.github/workflows/scripts/blue-green-manager.sh status
 
 # Scale up green deployment
-./scripts/blue-green-manager.sh scale-green
+./.github/workflows/scripts/blue-green-manager.sh scale-green
 
 # Switch traffic to green
-./scripts/blue-green-manager.sh switch-to-green
+./.github/workflows/scripts/blue-green-manager.sh switch-to-green
 
 # Switch back to blue (rollback)
-./scripts/blue-green-manager.sh switch-to-blue
+./.github/workflows/scripts/blue-green-manager.sh switch-to-blue
 
 # Test both versions
-./scripts/blue-green-manager.sh test-both
+./.github/workflows/scripts/blue-green-manager.sh test-both
 ```
 
 ### Manual Process Example
@@ -575,23 +575,23 @@ graph TD
 
 ```bash
 # Check current status
-./scripts/canary-manager.sh status
+./.github/workflows/scripts/canary-manager.sh status
 
 # Start canary with 1 replica
-./scripts/canary-manager.sh start-canary
+./.github/workflows/scripts/canary-manager.sh start-canary
 
 # Gradually scale canary
-./scripts/canary-manager.sh scale-canary 2
-./scripts/canary-manager.sh scale-canary 3
+./.github/workflows/scripts/canary-manager.sh scale-canary 2
+./.github/workflows/scripts/canary-manager.sh scale-canary 3
 
 # Monitor traffic distribution
-./scripts/canary-manager.sh test-traffic
+./.github/workflows/scripts/canary-manager.sh test-traffic
 
 # Promote canary to stable (make it the primary)
-./scripts/canary-manager.sh promote-canary
+./.github/workflows/scripts/canary-manager.sh promote-canary
 
 # Or rollback to stable only
-./scripts/canary-manager.sh rollback-canary
+./.github/workflows/scripts/canary-manager.sh rollback-canary
 ```
 
 ### Manual Process Example
@@ -788,20 +788,20 @@ minikube image load web-service:1.0 web-service:2.0
 kubectl apply -f k8s/
 
 # 2. Verify Blue is active (2 min)
-./scripts/blue-green-manager.sh status
+./.github/workflows/scripts/blue-green-manager.sh status
 kubectl logs -n deployment-strategies -l slot=blue -f &
 
 # 3. Run load test (3 min)
 kubectl port-forward svc/web-service 8080:80 -n deployment-strategies &
-k6 run --env SERVICE_URL=http://localhost:8080 load-tests/smoke-test.js
+k6 run --env SERVICE_URL=http://localhost:8080 test/load/smoke-test.js
 
 # 4. Switch to Green (3 min)
-./scripts/blue-green-manager.sh scale-green
-./scripts/blue-green-manager.sh switch-to-green
-./scripts/blue-green-manager.sh status
+./.github/workflows/scripts/blue-green-manager.sh scale-green
+./.github/workflows/scripts/blue-green-manager.sh switch-to-green
+./.github/workflows/scripts/blue-green-manager.sh status
 
 # 5. Verify traffic on Green (2 min)
-k6 run load-tests/smoke-test.js
+k6 run test/load/smoke-test.js
 ```
 
 ### Canary Demo (20 minutes)
@@ -812,22 +812,22 @@ kubectl delete -f k8s/01-blue-green.yaml
 kubectl apply -f k8s/02-canary.yaml
 
 # 2. Start canary (2 min)
-./scripts/canary-manager.sh status
-./scripts/canary-manager.sh start-canary
+./.github/workflows/scripts/canary-manager.sh status
+./.github/workflows/scripts/canary-manager.sh start-canary
 
 # 3. Monitor traffic distribution (5 min)
-k6 run --env SERVICE_URL=http://localhost:8080 load-tests/canary-test.js &
-watch -n 1 './scripts/canary-manager.sh status'
+k6 run --env SERVICE_URL=http://localhost:8080 test/load/canary-test.js &
+watch -n 1 './.github/workflows/scripts/canary-manager.sh status'
 
 # 4. Gradually promote (8 min)
-./scripts/canary-manager.sh scale-canary 2
+./.github/workflows/scripts/canary-manager.sh scale-canary 2
 sleep 30
-./scripts/canary-manager.sh scale-canary 3
+./.github/workflows/scripts/canary-manager.sh scale-canary 3
 sleep 30
-./scripts/canary-manager.sh promote-canary
+./.github/workflows/scripts/canary-manager.sh promote-canary
 
 # 5. Verify complete (2 min)
-./scripts/canary-manager.sh status
+./.github/workflows/scripts/canary-manager.sh status
 ```
 
 ## Best Practices
